@@ -1,163 +1,124 @@
-import sqlite3
-import os
+import sqlite3 # Import the library needed to talk to SQL databases
+import os # Import the library needed to find your file paths
 
-
-def test_database_connection():
-    # Automatically finds the folder your main.py file is sitting in (H:\GPUTASK8)
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-   
-    # Target the correct file name seen in your sidebar
-    database_name = 'GPUTASK8.db'
-    database_path = os.path.join(script_dir, database_name)
-   
-    try:
-        connection = sqlite3.connect(database_path)
-        cursor = connection.cursor()
-       
-        print(" Successfully connected to the GPU database!")
-        print("-" * 50)
-       
-        # Pull your data
-        cursor.execute("SELECT gpu_id, model_name, manufacturer, price, clock_speed FROM gpus")
-        all_gpus = cursor.fetchall()
-       
-        for gpu in all_gpus:
-            gpu_id, model_name, brand, price, speed = gpu
-            print(f"ID: {gpu_id} | {brand} {model_name} | ${price:.2f} NZD | {speed}MHz")
-           
-        print("-" * 50)
-        print("Connection test complete. Everything works!")
-        connection.close()
-       
-    except sqlite3.Error as error:
-        print(f"❌ Database error occurred: {error}")
-
-
-# test_database_connection()
-
+# --- CONFIGURATION (Constants) ---
+DATABASE_NAME = 'GPUTASK8.db' # Store the filename in a constant for easy updates
+SEPARATOR_WIDTH = 40 # Store the UI width in a constant to avoid 'magic numbers'
+MENU_EXIT = "5" # Define the exit choice as a constant
 
 def get_db_connection():
     """Helper function to cleanly connect to your database file"""
-    import os
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    database_path = os.path.join(script_dir, 'GPUTASK8.db')
-    return sqlite3.connect(database_path)
-
+    script_dir = os.path.dirname(os.path.abspath(__file__)) # Find the folder where this script lives
+    return sqlite3.connect(os.path.join(script_dir, DATABASE_NAME)) # Open the database file using the full path
 
 def show_all_gpus():
     """Feature 1: Displays everything in the database"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-   
+    conn = get_db_connection() # Open a connection to the database
+    cursor = conn.cursor() # Create a 'cursor' object to run SQL commands
+    
+    # Send the SQL query to select all columns from the 'gpus' table
     cursor.execute("SELECT gpu_id, model_name, manufacturer, price, clock_speed FROM gpus")
-    rows = cursor.fetchall()
-   
-    print("\n--- ALL AVAILABLE GRAPHICS CARDS ---")
-    for row in rows:
+    rows = cursor.fetchall() # Grab all the results from the query
+    
+    print(f"\n{'--- ALL AVAILABLE GRAPHICS CARDS ---':^{SEPARATOR_WIDTH}}") # Print a centered header
+    for row in rows: # Loop through every record retrieved from the database
+        # Print the data, accessing individual columns using their index [0, 1, 2, 3, 4]
         print(f"ID: {row[0]} | {row[2]} {row[1]} | ${row[3]:.2f} NZD | {row[4]}MHz")
-    print("-" * 36)
-   
-    conn.close()
-
+    print("-" * SEPARATOR_WIDTH) # Print a separator line using the constant width
+    
+    conn.close() # Close the database connection to free up resources
 
 def search_by_manufacturer():
-    """Feature 2: Filters GPUs by brand name with case-insensitive protection"""
+    """Feature 2: Filters GPUs by brand name"""
+    # Ask the user for input and remove extra whitespace
     brand_input = input("\nEnter manufacturer name (NVIDIA, AMD, or Intel): ").strip()
-   
-    conn = get_db_connection()
-    cursor = conn.cursor()
-   
-    # Using the SQL 'LIKE' operator makes the search case-insensitive
+    
+    conn = get_db_connection() # Connect to the database
+    cursor = conn.cursor() # Create the cursor
+    
+    # Execute a parameterized query (using '?' for safety) to find the manufacturer
     cursor.execute("""
         SELECT gpu_id, model_name, manufacturer, price, clock_speed
         FROM gpus
         WHERE manufacturer LIKE ?
-    """, (brand_input,))
-   
-    rows = cursor.fetchall()
-    conn.close()
-   
-    if rows:
-        print(f"\n--- MATCHING {brand_input.upper()} GRAPHICS CARDS ---")
-        for row in rows:
+    """, (brand_input,)) # Pass the user input as a tuple to the query
+    
+    rows = cursor.fetchall() # Store the matching results
+    conn.close() # Close the connection
+    
+    if rows: # Check if the list 'rows' contains any data
+        print(f"\n--- MATCHING {brand_input.upper()} GRAPHICS CARDS ---") # Inform the user
+        for row in rows: # Loop through each match
             print(f"ID: {row[0]} | {row[2]} {row[1]} | ${row[3]:.2f} NZD | {row[4]}MHz")
-        print("-" * 40)
-    else:
-        print(f"\n❌ No graphics cards found matching manufacturer: '{brand_input}'")
-
+        print("-" * SEPARATOR_WIDTH)
+    else: # If no data was found
+        print(f"\n❌ No graphics cards found matching: '{brand_input}'")
 
 def search_by_budget():
-    """Feature 3: Filters GPUs by a maximum price/budget"""
+    """Feature 3: Filters GPUs by max price with error handling"""
     print("\n--- BUDGET SEARCH ---")
-    budget_input = input("Enter your maximum budget (NZD): $").strip()
-   
-    # EXCELLENCE FEATURE: Error handling prevents crashes on bad input
-    try:
-        max_price = float(budget_input)
-    except ValueError:
-        print("\n❌ Invalid input! Please enter a real number (e.g., 500 or 500.50).")
-        return
-       
-    conn = get_db_connection()
-    cursor = conn.cursor()
-   
-    # ORDER BY price DESC puts the most powerful cards they can afford at the top
+    budget_input = input("Enter your maximum budget (NZD): $").strip() # Get user input
+    
+    try: # Start an error-checking block
+        max_price = float(budget_input) # Attempt to convert input string to a number
+    except ValueError: # Catch an error if the user typed text instead of numbers
+        print("\n❌ Invalid input! Please enter a real number.") # Notify the user
+        return # Stop the function from running further
+        
+    conn = get_db_connection() # Connect to the database
+    cursor = conn.cursor() # Create the cursor
+    
+    # Select records where price is less than or equal to user input, ordered by price
     cursor.execute("""
         SELECT gpu_id, model_name, manufacturer, price, clock_speed
         FROM gpus
         WHERE price <= ?
         ORDER BY price DESC
-    """, (max_price,))
-   
-    rows = cursor.fetchall()
-    conn.close()
-   
-    if rows:
+    """, (max_price,)) # Pass the converted float to the query
+    
+    rows = cursor.fetchall() # Retrieve the filtered records
+    conn.close() # Close the connection
+    
+    if rows: # If matches exist
         print(f"\n--- BEST CARDS UNDER ${max_price:.2f} NZD ---")
         for row in rows:
             print(f"ID: {row[0]} | {row[2]} {row[1]} | ${row[3]:.2f} NZD | {row[4]}MHz")
-        print("-" * 40)
-    else:
-        print(f"\n❌ No graphics cards found under ${max_price:.2f} NZD. Time to save up more!")
-
+        print("-" * SEPARATOR_WIDTH)
+    else: # If no matches exist
+        print(f"\n❌ No cards found under ${max_price:.2f} NZD.")
 
 def sort_by_clock_speed():
-    """Feature 4: Sorts all GPUs by clock speed from highest to lowest"""
-    print("\n--- GPUs SORTED BY CLOCK SPEED (FASTEST TO SLOWEST) ---")
-   
-    conn = get_db_connection()
-    cursor = conn.cursor()
-   
-    # ORDER BY clock_speed DESC puts the highest megahertz at the top
-    cursor.execute("""
-        SELECT gpu_id, model_name, manufacturer, price, clock_speed
-        FROM gpus
-        ORDER BY clock_speed DESC
-    """)
-   
-    rows = cursor.fetchall()
-    conn.close()
-   
-    if rows:
+    """Feature 4: Sorts all GPUs by clock speed"""
+    print("\n--- FASTEST TO SLOWEST ---")
+    
+    conn = get_db_connection() # Connect to the database
+    cursor = conn.cursor() # Create the cursor
+    
+    # Perform a standard select but use SQL's ORDER BY feature for sorting
+    cursor.execute("SELECT gpu_id, model_name, manufacturer, price, clock_speed FROM gpus ORDER BY clock_speed DESC")
+    rows = cursor.fetchall() # Get all results
+    conn.close() # Close the connection
+    
+    if rows: # If the table isn't empty
         for row in rows:
             print(f"ID: {row[0]} | {row[2]} {row[1]} | {row[4]}MHz | ${row[3]:.2f} NZD")
-        print("-" * 55)
-    else:
-        print("❌ No data found to sort.")
-
+        print("-" * SEPARATOR_WIDTH)
+    else: # If the table is empty
+        print("❌ No data found.")
 
 def main():
     """Main Program Menu Loop"""
-    while True:
+    while True: # Keep the program running indefinitely until the user breaks
         print("\n=== GPU DATABASE MANAGEMENT SYSTEM ===")
         print("1. View All Graphics Cards")
-        print("2. Search by Manufacturer (NVIDIA/AMD/Intel)")
-        print("3. Search by Budget (Max Price)")
+        print("2. Search by Manufacturer")
+        print("3. Search by Budget")
         print("4. Sort by Clock Speed")
-        print("5. Exit Program")
-       
-        choice = input("\nEnter your choice (1-5): ").strip()
-       
+        print(f"{MENU_EXIT}. Exit Program") # Display the exit option using the constant
+        
+        choice = input("\nEnter your choice (1-5): ").strip() # Get user menu selection
+        
+        # Branch the program logic based on user choice
         if choice == "1":
             show_all_gpus()
         elif choice == "2":
@@ -166,13 +127,12 @@ def main():
             search_by_budget()
         elif choice == "4":
             sort_by_clock_speed()
-        elif choice == "5":
-            print("\nThank you for using the GPU Database App. Goodbye!")
-            break
-        else:
-            print("\n❌ Invalid choice! Please enter a number between 1 and 5.")
+        elif choice == MENU_EXIT: # Compare input against the constant
+            print("\nGoodbye!")
+            break # Stop the while loop, effectively ending the program
+        else: # Handle input that is not 1-5
+            print("\n❌ Invalid choice!")
 
-
-# This line starts the menu loop when you run python main.py
+# Only run the main function if this file is executed directly (standard practice)
 if __name__ == "__main__":
     main()
